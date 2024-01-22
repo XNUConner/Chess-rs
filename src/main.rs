@@ -5,313 +5,325 @@ use speedy2d::window::{
     WindowHelper,
     WindowStartupInfo,
 };
-use speedy2d::dimen::{Vector2, UVec2};
-use speedy2d::shape::Rectangle;
+use speedy2d::dimen::{Vector2, UVec2, Vec2};
+use speedy2d::shape::{Rectangle, URect};
 use speedy2d::color::Color;
 
 use std::collections::HashMap;
 
+
 fn main() {
+
     env_logger::init();
 
     let (window_width, window_height) = (800, 800);
 
     let window = Window::new_centered("Chess", (window_height, window_width)).unwrap();
-    window.run_loop( ChessWindowHandler::new(window_height, window_width) );
+
+    window.run_loop( GameWindowHandler::new() );
+
 }
 
-struct ChessWindowHandler {
-    window_height: u32,
-    window_width: u32,
-    board: Board,
+struct GameWindowHandler {
+    game: Chess,
+    renderer: Option<Renderer>,
 }
 
-struct Board {
-    dimensions_px: u32,
-    window_y_offset: u32, // Space in pixels between buffer area ensuring 1:1 aspect ratio and board (y).
-    window_x_offset: u32, // Same for x.
-    pieces: PiecesController,
-}
-
-impl Board {
-    fn new(dimensions_px: u32) -> Self {
-        Board {
-            dimensions_px,
-            window_y_offset: 0,
-            window_x_offset: 0,
-            pieces: PiecesController::new("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR"),
-        }
-    }
-
-    fn resize(&mut self, window_height: u32, window_width: u32) {
-        self.dimensions_px = if window_height < window_width { window_height } else { window_width };
-        self.window_y_offset = (window_height - self.dimensions_px) / 2;
-        self.window_x_offset = (window_width  - self.dimensions_px) / 2;
-    }
-
-    fn render_board(&self, graphics: &mut Graphics2D) {
-        let square_dimensions = self.dimensions_px as f32 / 8.0;
-        for y in 0..8 {
-            for x in 0..8 {
-                let square_color = match (y + x) % 2 {
-                    0 => Color::from_int_rgb(160, 170, 185),
-                    _ => Color::from_int_rgb(100, 30, 50),
-                };
-
-                log::debug!("Drawing {}x{} quad at: y: {}, x: {}", square_dimensions, square_dimensions, y as f32 * square_dimensions, x as f32 * square_dimensions);
-                draw_quad_at((y as f32 * square_dimensions ) + self.window_y_offset as f32, (x as f32 * square_dimensions) + self.window_x_offset as f32, square_dimensions, square_dimensions, square_color, graphics);
-            }
-        }
-    }
-
-    fn render_pieces(&mut self, graphics: &mut Graphics2D) {
-
-        if !self.pieces.images_loaded {
-            self.pieces.load_images(graphics);
-        }
-
-        for y in 0..8 {
-            for x in 0..8 {
-
-                if let Some(piece) = self.pieces.get_piece_at(y, x) {
-                    log::info!("Rendering piece @ y: {} x: {}", y, x);
-                    let square_dimensions = self.dimensions_px as f32 / 8.0;
-                    let window_y = (y as f32 * square_dimensions) + self.window_y_offset as f32; 
-                    let window_x = (x as f32 * square_dimensions) + self.window_x_offset as f32;
-
-
-                    let top_left = Vector2::<f32> { y: window_y, x: window_x };
-                    let bottom_right = Vector2::<f32> { y: window_y + square_dimensions, x: window_x + square_dimensions };
-                    let rect = Rectangle::<f32>::new(top_left, bottom_right);
-
-                    graphics.draw_rectangle_image(rect, self.pieces.get_image_for_piece(piece.name, piece.color) );
-                }
-
-            }
-        }
-
-    }
-}
-
-#[derive(Clone)]
-#[derive(Copy)]
-#[derive(Debug)]
-enum PieceColor {
-    BLACK,
-    WHITE,
-}
-
-#[derive(Clone)]
-#[derive(Copy)]
-#[derive(Debug)]
-#[derive(Eq)]
-#[derive(PartialEq)]
-#[derive(Hash)]
-enum PieceName {
-    PAWN,
-    ROOK,
-    KNIGHT,
-    BISHOP,
-    KING,
-    QUEEN,
-}
-
-#[derive(Clone)]
-#[derive(Copy)]
-#[derive(Debug)]
-struct Piece {
-    name: PieceName,
-    color: PieceColor,
-}
-
-impl Piece {
-    fn new(name: PieceName, color: PieceColor) -> Self {
-        Piece {
-            name,
-            color,
+impl GameWindowHandler {
+    fn new() -> Self {
+        GameWindowHandler {
+            game: Chess::new(),
+            renderer: None,
         }
     }
 }
 
-#[derive(Debug)]
-struct PieceInfo {
-    fen_notation: char,
-    imagepath_white: &'static str,
-    imagepath_black: &'static str,
-    image_white: Option<ImageHandle>,
-    image_black: Option<ImageHandle>,
-}
-
-impl PieceInfo {
-    fn new(fen_notation: char, imagepath_white: &'static str, imagepath_black: &'static str) -> PieceInfo {
-        assert!(fen_notation.is_ascii() && fen_notation.is_alphabetic());
-        PieceInfo {
-            fen_notation: fen_notation.to_ascii_lowercase(),
-            imagepath_white,
-            imagepath_black,
-            image_white: None,
-            image_black: None,
-        }
-    }
-}
-
-struct PiecesController {
-    pieces: Vec<Option<Piece>>,
-    pieceinfo_map: HashMap<PieceName, PieceInfo>,
-    images_loaded: bool,
-}
-
-impl PiecesController {
-    fn new(fen: &str) -> Self {
-        let mut pc = PiecesController {
-            pieces: vec![None; 64],
-
-            pieceinfo_map: HashMap::from([
-                (PieceName::PAWN,    PieceInfo::new('p', "img/pl.png", "img/pd.png")),
-                (PieceName::ROOK,    PieceInfo::new('r', "img/rl.png", "img/rd.png")),
-                (PieceName::KNIGHT,  PieceInfo::new('n', "img/nl.png", "img/nd.png")),
-                (PieceName::BISHOP,  PieceInfo::new('b', "img/bl.png", "img/bd.png")),
-                (PieceName::KING,    PieceInfo::new('k', "img/kl.png", "img/kd.png")),
-                (PieceName::QUEEN,   PieceInfo::new('q', "img/ql.png", "img/qd.png")),
-            ]),
-
-            images_loaded: false,
-        };
-
-        pc.load_fen(fen);
-
-        pc
-    }
-
-    fn load_fen(&mut self, fen: &str) {
-
-        let mut board_index = 0;
-        for ch in fen.chars() {
-
-            assert!(ch.is_ascii());
-
-            // Skip '/'
-            if ch == '/' { continue; };
-
-            // Handle digits (1-8)
-            if let Some(digit) = ch.to_digit(/*radix*/ 10) {
-
-                // FEN should not have a digit not between 1 & 8 (inclusive).
-                assert!(digit > 0 && digit <= 8);
-
-                self.pieces[board_index] = None;
-                board_index += digit as usize;
-                continue;
-
-            } 
-
-            let color = match ch.is_uppercase() {
-                true  => PieceColor::WHITE,
-                false => PieceColor::BLACK,
-            };
-
-            let name = match ch {
-                'p' | 'P' => { PieceName::PAWN   },
-                'n' | 'N' => { PieceName::KNIGHT },
-                'k' | 'K' => { PieceName::KING   },
-                'q' | 'Q' => { PieceName::QUEEN  },
-                'b' | 'B' => { PieceName::BISHOP },
-                'r' | 'R' => { PieceName::ROOK   },
-                       _  => { panic!("Invalid letter in FEN string! ({})", ch); },
-            };
-
-            let piece = Piece::new(name, color);
-            self.pieces[board_index] = Some(piece);
-            board_index += 1;
-
-        }
-
-    }
-
-    fn get_piece_at(&self, y: usize, x: usize) -> Option<Piece> {
-        let index = (y * 8) + x;
-        self.pieces[index]
-    }
-
-    fn load_images(&mut self, graphics: &mut Graphics2D) {
-        if self.images_loaded { return; };
-
-        for info in &mut self.pieceinfo_map.values_mut() {
-            let white_imagehandle = graphics.create_image_from_file_path(None, ImageSmoothingMode::NearestNeighbor, info.imagepath_white).expect("Could not load an image for a white piece.");
-            let black_imagehandle = graphics.create_image_from_file_path(None, ImageSmoothingMode::NearestNeighbor, info.imagepath_black).expect("Could not load an image for a black piece.");
-            
-            info.image_white = Some(white_imagehandle);
-            info.image_black = Some(black_imagehandle);
-
-        }
-        self.images_loaded = true;
-    }
-
-    fn get_image_for_piece(&self, name: PieceName, color: PieceColor) -> &ImageHandle {
-        match color {
-            PieceColor::WHITE => &self.pieceinfo_map.get(&name).unwrap().image_white.as_ref().unwrap(),
-            PieceColor::BLACK => &self.pieceinfo_map.get(&name).unwrap().image_black.as_ref().unwrap(),
-        }
-    }
-}
-
-impl ChessWindowHandler {
-    pub fn new(window_height: u32, window_width: u32) -> Self {
-
-        let board_dimensions_px = if window_height < window_width { window_height } else { window_width };
-
-        ChessWindowHandler {
-            window_height,
-            window_width,
-            board: Board::new(board_dimensions_px),
-        }
-
-    }
-}
-
-impl WindowHandler for ChessWindowHandler {
-    fn on_start(&mut self, _helper: &mut WindowHelper, info: WindowStartupInfo) {
-        log::info!("on_start() | info: {:?}", info);
-        self.window_height = info.viewport_size_pixels().y;
-        self.window_width = info.viewport_size_pixels().x;
-
-        self.board.resize(self.window_height, self.window_width);
+impl WindowHandler for GameWindowHandler {
+    fn on_start(&mut self, helper: &mut WindowHelper, info: WindowStartupInfo) {
+        log::info!("Got on_start callback: {:?}", info);
+        self.renderer = Some(Renderer::new(*info.viewport_size_pixels()));
+        //self.game.load_fen("8/5k2/3p4/1p1Pp2p/pP2Pp1P/P4P1K/8/8");
+        self.game.pieces[7] = ChessPiece::KNIGHT as u8 | ChessColor::BLACK as u8;
+        self.game.pieces[0] = ChessPiece::KNIGHT as u8 | ChessColor::WHITE as u8;
+        self.game.pieces[8] = ChessPiece::KING   as u8 | ChessColor::WHITE as u8;
     }
 
     fn on_resize(&mut self, _helper: &mut WindowHelper, size_pixels: UVec2) {
-        log::info!("on_resize() | size_pixels: {:?}", size_pixels);
-        self.window_height = size_pixels.y;
-        self.window_width  = size_pixels.x;
-
-        self.board.resize(self.window_height, self.window_width);
-
+        log::info!("Got on_resize callback: {:?}", size_pixels);
     }
 
     fn on_draw(&mut self, _helper: &mut WindowHelper, graphics: &mut Graphics2D) {
 
+        if self.renderer.as_ref().unwrap().piece_images.is_none() {
+            self.renderer.as_mut().unwrap().load_images(graphics);
+        }
+
         // Clear the screen
         graphics.clear_screen(Color::from_rgb(0.8, 0.9, 1.0));
 
-        let offset_y = ((self.window_height - self.board.dimensions_px) / 2) as f32;
-        let offset_x = ((self.window_width  - self.board.dimensions_px) / 2) as f32;
+        self.renderer.as_mut().unwrap().render_board(&self.game.pieces, graphics);
+    }
+}
 
-        draw_quad_at(offset_y, offset_x, self.board.dimensions_px as f32, self.board.dimensions_px as f32, Color::GREEN, graphics);
+#[derive(Debug)]
+struct Renderer {
+    window_rect: URect,
+    game_rect: URect,
+    piece_images: Option<HashMap<ChessPiece, [ImageHandle; 2]>>,
+}
 
-        self.board.render_board(graphics);
-        self.board.render_pieces(graphics);
+impl Renderer {
+    fn new(window_size: UVec2) -> Self {
 
+        const GAME_WINDOW_SIZE_PX_Y: u32 = 700;
+        const GAME_WINDOW_SIZE_PX_X: u32 = 700;
+
+        let game_topleft_y = (window_size.y - GAME_WINDOW_SIZE_PX_Y) / 2;
+        let game_topleft_x = (window_size.x - GAME_WINDOW_SIZE_PX_X) / 2;
+        let game_bottomright_y = game_topleft_y + GAME_WINDOW_SIZE_PX_Y;
+        let game_bottomright_x = game_topleft_x + GAME_WINDOW_SIZE_PX_X;
+
+
+        Renderer {
+            window_rect: URect::new( UVec2::new(0, 0),                             UVec2::new(window_size.x, window_size.y) ),
+            game_rect:   URect::new( UVec2::new(game_topleft_x, game_topleft_y),   UVec2::new(game_bottomright_x, game_bottomright_y) ),
+            piece_images: None,
+        }
     }
 
+    fn load_images(&mut self, graphics: &mut Graphics2D) {
+        self.piece_images = Some( HashMap::from([
+            (ChessPiece::PAWN,   Self::load_images_for_piece(ChessPiece::PAWN,   graphics)),
+            (ChessPiece::ROOK,   Self::load_images_for_piece(ChessPiece::ROOK,   graphics)),
+            (ChessPiece::KNIGHT, Self::load_images_for_piece(ChessPiece::KNIGHT, graphics)),
+            (ChessPiece::BISHOP, Self::load_images_for_piece(ChessPiece::BISHOP, graphics)),
+            (ChessPiece::QUEEN,  Self::load_images_for_piece(ChessPiece::QUEEN,  graphics)),
+            (ChessPiece::KING,   Self::load_images_for_piece(ChessPiece::KING,   graphics)),
+        ]));
+    }
+
+    fn load_images_for_piece(piece: ChessPiece, graphics: &mut Graphics2D) -> [ImageHandle; 2] {
+
+        const IMAGE_DIR: &str = "img/";
+        const IMAGE_EXT: &str = ".png";
+
+        let piece_char = match piece {
+            ChessPiece::PAWN   => 'p',
+            ChessPiece::ROOK   => 'r',
+            ChessPiece::KNIGHT => 'n',
+            ChessPiece::BISHOP => 'b',
+            ChessPiece::QUEEN  => 'q',
+            ChessPiece::KING   => 'k',
+        };
+
+        let light_char = 'l';
+        let dark_char  = 'd';
+        let path_light = format!("{IMAGE_DIR}{piece_char}{light_char}{IMAGE_EXT}");
+        let path_dark  = format!("{IMAGE_DIR}{piece_char}{dark_char}{IMAGE_EXT}");
+
+
+        [
+            graphics.create_image_from_file_path(None, ImageSmoothingMode::NearestNeighbor, path_light.clone()).expect( &format!("Failed to load image for {}", path_light).to_owned()),
+            graphics.create_image_from_file_path(None, ImageSmoothingMode::NearestNeighbor, path_dark.clone()).expect( &format!("Failed to load image for {}", path_dark).to_owned()),
+        ]
+    } 
+
+    fn render_board(&self, pieces: &[u8], graphics: &mut Graphics2D) {
+
+        // Prepare the dimensions and coordinates of the board square to be drawn
+
+        // square_size:         Used for the Height and Width of the square
+        // square_top_left:     Top-left corner x,y coordinates of the square
+        // square_bottom_right: Bottom-right corner x,y coordinates of the square
+ 
+        let square_size = (self.game_rect.bottom_right().y - self.game_rect.top_left().y) as f32 / 8.0; 
+        let square_top_left = Vec2::new(self.game_rect.top_left().x as f32, self.game_rect.top_left().y as f32);
+        let square_bottom_right = Vec2::new(square_top_left.x + square_size, square_top_left.y + square_size);
+
+
+        for y in 0..8 {
+            for x in 0..8 {
+                let y_offset = y as f32 * square_size;
+                let x_offset = x as f32 * square_size;
+                
+                let quad = [
+                    // from origin
+                    Vec2::new(square_top_left.y + y_offset, square_bottom_right.x + x_offset),
+                    Vec2::new(square_bottom_right.y + y_offset, square_bottom_right.x + x_offset),
+                    Vec2::new(square_bottom_right.y + y_offset, square_top_left.x + x_offset),
+                    Vec2::new(square_top_left.y + y_offset, square_top_left.x + x_offset),
+                ];
+
+                let square_color = match (y + x) % 2 {
+                    0 => Color::WHITE,
+                    _ => Color::from_int_rgb(200, 200, 200),
+                };
+
+		graphics.draw_quad(quad, square_color);
+
+                let board_position = (y * 8) + x;
+                let piece = pieces[board_position];
+
+                // Skip if no piece at that position
+                if piece == 0 { continue; }
+
+                // extract color
+                let color = match piece > 128 {
+                    true  => ChessColor::BLACK,
+                    false => ChessColor::WHITE,
+                };
+
+                let name = ChessPiece::try_from(piece ^ (color as u8)).unwrap();
+
+                let imagehandle = match color {
+                    ChessColor::WHITE => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[0],
+                    ChessColor::BLACK => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[1],
+                };
+
+                let rect = Rectangle::new( 
+                    Vector2::new(square_top_left.y as f32 + y_offset, square_top_left.x as f32 + x_offset), 
+                    Vector2::new(square_bottom_right.y as f32 + y_offset, square_bottom_right.x as f32 + x_offset),
+                );
+
+                graphics.draw_rectangle_image(&rect, imagehandle);
+                
+            }
+        }
+        
+
+    }
 }
 
-fn draw_quad_at(y: f32, x: f32, height: f32, width: f32, color: Color, graphics: &mut Graphics2D) {
-
-    let quad = [
-        Vector2::new(width + x, height + y),
-        Vector2::new(width + x,          y),
-        Vector2::new(        x,          y),
-        Vector2::new(        x, height + y),
-    ];
-
-    graphics.draw_quad(quad, color);
+#[derive(Eq)]
+#[derive(PartialEq)]
+#[derive(Copy)]
+#[derive(Clone)]
+#[repr(u8)]
+enum ChessColor { // PieceColor
+    WHITE = 64,
+    BLACK = 128,
 }
+
+#[derive(Debug)]
+#[derive(Eq)]
+#[derive(PartialEq)]
+#[derive(Hash)]
+#[repr(u8)]
+enum ChessPiece { // PieceName
+    PAWN = 1,
+    ROOK = 2,
+    KNIGHT = 4,
+    BISHOP = 8,
+    QUEEN = 16,
+    KING = 32,
+}
+
+impl TryFrom<u8> for ChessPiece {
+    type Error = &'static str;
+
+    fn try_from(val: u8) -> Result<Self, Self::Error> {
+       match val {
+            1  => Ok(Self::PAWN),
+            2  => Ok(Self::ROOK),
+            4  => Ok(Self::KNIGHT),
+            8  => Ok(Self::BISHOP),
+            16 => Ok(Self::QUEEN),
+            32 => Ok(Self::KING),
+            _  => Err("Invalid u8 provided during ChessPiece conversion"),
+       }
+    }
+}
+
+struct Player {
+    color: ChessColor,
+    is_turn: bool,
+    is_in_check: bool,
+}
+
+impl Player {
+    fn new(color: ChessColor) -> Self {
+        let is_turn = color == ChessColor::WHITE;
+
+        Player {
+            color,
+            is_turn,
+            is_in_check: false,
+        }
+
+    }
+}
+
+struct Chess {
+    pieces: [u8; 64], // Change to 'board'
+    display_rect: Rectangle,
+    white: Player,
+    black: Player,
+}
+
+impl Chess {
+    fn new() -> Self {
+        Chess {
+            pieces: [0; 64], // change to 'board'
+            display_rect: Rectangle::new( Vector2::new(100.0, 100.0), Vector2::new(200.0, 200.0) ),
+            white: Player::new(ChessColor::WHITE),
+            black: Player::new(ChessColor::BLACK),
+        }
+    }
+
+    fn load_fen(&mut self, fen: &str) {
+        assert!( fen.is_ascii() );
+
+        let mut board_ptr: usize = 0;
+        for ch in fen.chars() {
+
+            // Skip '/'
+            if ch == '/' { continue; }
+
+            assert!( ch.is_ascii_alphanumeric() );
+
+            // For digits, increment board_ptr by digit, continue
+            if let Some(digit) = ch.to_digit(/* Radix */ 10) {
+                assert!(digit > 0 && digit <= 8);
+                board_ptr += digit as usize;
+                continue;
+            }
+
+            // For chars setup the corresponding black or white piece at that square
+            assert!( ch.is_ascii_alphabetic() );
+
+            let is_black: bool = ch.is_ascii_uppercase();
+
+            let mut piece: u8 = match is_black {
+                true  => ChessColor::BLACK as u8,
+                false => ChessColor::WHITE as u8,
+            };
+
+            piece |= match ch.to_ascii_lowercase() {
+                'p' => ChessPiece::PAWN   as u8,
+                'r' => ChessPiece::ROOK   as u8,
+                'n' => ChessPiece::KNIGHT as u8,
+                'b' => ChessPiece::BISHOP as u8,
+                'q' => ChessPiece::QUEEN  as u8,
+                'k' => ChessPiece::KING   as u8,
+                 _  => panic!("Invalid character in FEN string."),
+            };
+
+            board_ptr += 1;
+
+            self.pieces[board_ptr] = piece;
+
+        }
+
+        dbg!(&self.pieces);
+    }
+
+    fn make_move(&mut self, start: usize, dst: usize) {
+        assert!(start != dst);
+        assert!(start >= 0 && start < 64);
+
+        let piece = self.pieces[start];
+        self.pieces[start] = 0;
+        self.pieces[dst] = piece;
+    }
+}
+
