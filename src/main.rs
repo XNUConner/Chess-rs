@@ -1,5 +1,6 @@
 use speedy2d::{Window, Graphics2D};
 use speedy2d::image::{ImageHandle, ImageSmoothingMode};
+use speedy2d::window::MouseButton;
 use speedy2d::window::{
     WindowHandler,
     WindowHelper,
@@ -11,6 +12,8 @@ use speedy2d::color::Color;
 
 use std::collections::HashMap;
 
+const GAME_VIEW_HEIGHT_PX: u32 = 700;
+const GAME_VIEW_WIDTH_PX: u32 = 700;
 
 fn main() {
 
@@ -27,6 +30,8 @@ fn main() {
 struct GameWindowHandler {
     game: Chess,
     renderer: Option<Renderer>,
+    selected_square: Option<usize>,
+    hovered_square:  Option<usize>,
 }
 
 impl GameWindowHandler {
@@ -34,6 +39,8 @@ impl GameWindowHandler {
         GameWindowHandler {
             game: Chess::new(),
             renderer: None,
+            selected_square: None,
+            hovered_square: None,
         }
     }
 }
@@ -41,11 +48,11 @@ impl GameWindowHandler {
 impl WindowHandler for GameWindowHandler {
     fn on_start(&mut self, helper: &mut WindowHelper, info: WindowStartupInfo) {
         log::info!("Got on_start callback: {:?}", info);
-        self.renderer = Some(Renderer::new(*info.viewport_size_pixels()));
-        //self.game.load_fen("8/5k2/3p4/1p1Pp2p/pP2Pp1P/P4P1K/8/8");
-        self.game.pieces[7] = ChessPiece::KNIGHT as u8 | ChessColor::BLACK as u8;
-        self.game.pieces[0] = ChessPiece::KNIGHT as u8 | ChessColor::WHITE as u8;
-        self.game.pieces[8] = ChessPiece::KING   as u8 | ChessColor::WHITE as u8;
+        let window_width = info.viewport_size_pixels().x;
+        let window_height = info.viewport_size_pixels().y;
+        self.renderer = Some(Renderer::new( window_width, window_height ));
+
+        self.game.load_fen("8/5k2/3p4/1p1Pp2p/pP2Pp1P/P4P1K/8/8");
     }
 
     fn on_resize(&mut self, _helper: &mut WindowHelper, size_pixels: UVec2) {
@@ -54,6 +61,7 @@ impl WindowHandler for GameWindowHandler {
 
     fn on_draw(&mut self, _helper: &mut WindowHelper, graphics: &mut Graphics2D) {
 
+        // Load piece images if not already done
         if self.renderer.as_ref().unwrap().piece_images.is_none() {
             self.renderer.as_mut().unwrap().load_images(graphics);
         }
@@ -62,6 +70,41 @@ impl WindowHandler for GameWindowHandler {
         graphics.clear_screen(Color::from_rgb(0.8, 0.9, 1.0));
 
         self.renderer.as_mut().unwrap().render_board(&self.game.pieces, graphics);
+    }
+
+    fn on_mouse_move(&mut self, helper: &mut WindowHelper, position: Vec2) {
+        self.hovered_square = self.renderer.as_ref().unwrap().get_board_position(&position);
+
+        helper.request_redraw();
+    }
+
+    fn on_mouse_button_down(&mut self, helper: &mut WindowHelper, button: MouseButton)
+    {
+        log::info!("Got on_mouse_button_down callback: {:?}", button);
+
+        if button == MouseButton::Left && self.hovered_square.is_some() && self.selected_square.is_some() {
+            let piece_to_move = self.game.pieces[self.selected_square.unwrap()];
+            self.game.pieces[self.selected_square.unwrap()] = 0;
+            self.game.pieces[self.hovered_square.unwrap()] = piece_to_move;
+
+            self.selected_square = None;
+        }
+
+        if button == MouseButton::Left && self.hovered_square.is_some() && self.selected_square.is_none() {
+            if self.game.pieces[self.hovered_square.unwrap()] != 0 {
+                self.selected_square = self.hovered_square;
+            }
+        }
+
+
+        helper.request_redraw();
+    }
+
+    fn on_mouse_button_up(&mut self, helper: &mut WindowHelper, button: MouseButton)
+    {
+        log::info!("Got on_mouse_button_up callback: {:?}", button);
+
+        //helper.request_redraw();
     }
 }
 
@@ -73,21 +116,52 @@ struct Renderer {
 }
 
 impl Renderer {
-    fn new(window_size: UVec2) -> Self {
+    fn new(window_width: u32, window_height: u32) -> Self {
 
-        const GAME_WINDOW_SIZE_PX_Y: u32 = 700;
-        const GAME_WINDOW_SIZE_PX_X: u32 = 700;
 
-        let game_topleft_y = (window_size.y - GAME_WINDOW_SIZE_PX_Y) / 2;
-        let game_topleft_x = (window_size.x - GAME_WINDOW_SIZE_PX_X) / 2;
-        let game_bottomright_y = game_topleft_y + GAME_WINDOW_SIZE_PX_Y;
-        let game_bottomright_x = game_topleft_x + GAME_WINDOW_SIZE_PX_X;
+        let game_topleft_y = (window_height - GAME_VIEW_HEIGHT_PX) / 2;
+        let game_topleft_x = (window_width  - GAME_VIEW_WIDTH_PX)  / 2;
 
+        let game_topleft = (game_topleft_x, game_topleft_y);
+
+        let game_bottomright_y = game_topleft_y + GAME_VIEW_HEIGHT_PX;
+        let game_bottomright_x = game_topleft_x + GAME_VIEW_WIDTH_PX;
+        
+        let game_bottomright = (game_bottomright_x, game_bottomright_y);
+
+        // topleft asserts are unecessary due to the constraints of u32 having to be >= 0
+        assert!(game_bottomright_y <= window_height);
+        assert!(game_bottomright_x <= window_width);
+
+        let window_topleft = (/* x */ 0, /* y */ 0);
+        let window_bottomright = (window_width, window_height);
 
         Renderer {
-            window_rect: URect::new( UVec2::new(0, 0),                             UVec2::new(window_size.x, window_size.y) ),
-            game_rect:   URect::new( UVec2::new(game_topleft_x, game_topleft_y),   UVec2::new(game_bottomright_x, game_bottomright_y) ),
+            window_rect: URect::from_tuples( window_topleft, window_bottomright ),
+            game_rect:   URect::from_tuples( game_topleft,   game_bottomright   ),
             piece_images: None,
+        }
+    }
+
+    // Renderer should not be doing this, need some GameInput struct with a &'static mut Chess
+    // reference
+    fn get_board_position(&self, mouse_position: &Vector2<f32>) -> Option<usize> {
+        let out_of_bounds_y = mouse_position.y < self.game_rect.top_left().y as f32  ||  mouse_position.y > self.game_rect.bottom_right().y as f32;
+        let out_of_bounds_x = mouse_position.x < self.game_rect.top_left().x as f32  ||  mouse_position.x > self.game_rect.bottom_right().x as f32;
+
+        if out_of_bounds_y || out_of_bounds_x {
+            None
+        } else {
+            let ratio_x = GAME_VIEW_WIDTH_PX  as f32 / 8.0;
+            let ratio_y = GAME_VIEW_HEIGHT_PX as f32 / 8.0;
+
+            let x_offset = (self.game_rect.top_left().x - self.window_rect.top_left().x) as f32;
+            let y_offset = (self.game_rect.top_left().y - self.window_rect.top_left().y) as f32;
+
+            let board_pos_x = ((mouse_position.x - x_offset) / ratio_x as f32) as u32;
+            let board_pos_y = ((mouse_position.y - y_offset) / ratio_y as f32) as u32;
+
+            Some( ((board_pos_y * 8) + board_pos_x) as usize )
         }
     }
 
@@ -104,6 +178,7 @@ impl Renderer {
 
     fn load_images_for_piece(piece: ChessPiece, graphics: &mut Graphics2D) -> [ImageHandle; 2] {
 
+
         const IMAGE_DIR: &str = "img/";
         const IMAGE_EXT: &str = ".png";
 
@@ -112,7 +187,7 @@ impl Renderer {
             ChessPiece::ROOK   => 'r',
             ChessPiece::KNIGHT => 'n',
             ChessPiece::BISHOP => 'b',
-            ChessPiece::QUEEN  => 'q',
+            ChessPiece::nfl theme songQUEEN  => 'q',
             ChessPiece::KING   => 'k',
         };
 
@@ -132,37 +207,57 @@ impl Renderer {
 
         // Prepare the dimensions and coordinates of the board square to be drawn
 
-        // square_size:         Used for the Height and Width of the square
-        // square_top_left:     Top-left corner x,y coordinates of the square
-        // square_bottom_right: Bottom-right corner x,y coordinates of the square
- 
-        let square_size = (self.game_rect.bottom_right().y - self.game_rect.top_left().y) as f32 / 8.0; 
-        let square_top_left = Vec2::new(self.game_rect.top_left().x as f32, self.game_rect.top_left().y as f32);
-        let square_bottom_right = Vec2::new(square_top_left.x + square_size, square_top_left.y + square_size);
+        // Calculate both, but only using width, since for now the board is always made to true
+        // squares instead of rectangles with differing height-width ratios.
+        let square_len = {
+            let _game_rect_height = self.game_rect.bottom_right().y - self.game_rect.top_left().y;
+            let game_rect_width  = self.game_rect.bottom_right().x - self.game_rect.top_left().x;
 
+            game_rect_width / 8
+        };
+
+        let top_left = (self.game_rect.top_left().x, self.game_rect.top_left().y);
+
+        let bottom_right = {
+            let x = top_left.0 + square_len;
+            let y = top_left.1 + square_len;
+            (x, y)
+        };
+
+        // Top left square of board
+        let top_left_square = URect::from_tuples(top_left, bottom_right);
 
         for y in 0..8 {
+
             for x in 0..8 {
-                let y_offset = y as f32 * square_size;
-                let x_offset = x as f32 * square_size;
-                
-                let quad = [
-                    // from origin
-                    Vec2::new(square_top_left.y + y_offset, square_bottom_right.x + x_offset),
-                    Vec2::new(square_bottom_right.y + y_offset, square_bottom_right.x + x_offset),
-                    Vec2::new(square_bottom_right.y + y_offset, square_top_left.x + x_offset),
-                    Vec2::new(square_top_left.y + y_offset, square_top_left.x + x_offset),
-                ];
+
+                let square = {
+                    let y_offset = y * square_len;
+                    let x_offset = x * square_len;
+                    top_left_square.with_offset( UVec2::new(x_offset, y_offset) )
+                };
 
                 let square_color = match (y + x) % 2 {
                     0 => Color::WHITE,
                     _ => Color::from_int_rgb(200, 200, 200),
                 };
 
-		graphics.draw_quad(quad, square_color);
+                // Due to .as_ref() not being implemented for Rectangle<u32> but only for
+                // Rectangle<f32>, we must convert square from URect to Rect
+                // Which is a bit strange, since how would you draw 0.5 pixels?
+                let square_f32 = {
+                    let top_left_f32     = ( square.top_left().x as f32, square.top_left().y as f32 );
+                    let bottom_right_f32 = ( square.bottom_right().x as f32, square.bottom_right().y as f32 );
 
-                let board_position = (y * 8) + x;
-                let piece = pieces[board_position];
+                    Rectangle::from_tuples(top_left_f32, bottom_right_f32)
+                };
+
+		graphics.draw_rectangle(&square_f32, square_color);
+
+                let piece = {
+                    let board_position = ((y * 8) + x) as usize;
+                    pieces[board_position]
+                };
 
                 // Skip if no piece at that position
                 if piece == 0 { continue; }
@@ -180,12 +275,7 @@ impl Renderer {
                     ChessColor::BLACK => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[1],
                 };
 
-                let rect = Rectangle::new( 
-                    Vector2::new(square_top_left.y as f32 + y_offset, square_top_left.x as f32 + x_offset), 
-                    Vector2::new(square_bottom_right.y as f32 + y_offset, square_bottom_right.x as f32 + x_offset),
-                );
-
-                graphics.draw_rectangle_image(&rect, imagehandle);
+                graphics.draw_rectangle_image(&square_f32, imagehandle);
                 
             }
         }
@@ -291,7 +381,7 @@ impl Chess {
             // For chars setup the corresponding black or white piece at that square
             assert!( ch.is_ascii_alphabetic() );
 
-            let is_black: bool = ch.is_ascii_uppercase();
+            let is_black: bool = ch.is_ascii_lowercase();
 
             let mut piece: u8 = match is_black {
                 true  => ChessColor::BLACK as u8,
@@ -308,13 +398,11 @@ impl Chess {
                  _  => panic!("Invalid character in FEN string."),
             };
 
-            board_ptr += 1;
-
             self.pieces[board_ptr] = piece;
+            board_ptr += 1;
 
         }
 
-        dbg!(&self.pieces);
     }
 
     fn make_move(&mut self, start: usize, dst: usize) {
