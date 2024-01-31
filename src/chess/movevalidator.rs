@@ -1,6 +1,7 @@
 use crate::chess::Chess;
 use crate::chess::PieceColor;
 use crate::chess::PieceName;
+use crate::chess::Square;
 
 mod pawn;
 mod knight;
@@ -19,7 +20,7 @@ impl MoveValidator {
         assert!(dst >= 0 && dst <= 63);
         assert!(src != dst);
 
-        if let piece = chess.get_piece_at_square(src) {
+        if let Some(piece) = chess.get_piece_at_square(src) {
 
             let name = Chess::get_name_for_piece(piece);
             

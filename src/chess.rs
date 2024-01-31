@@ -67,11 +67,15 @@ impl Chess {
             };
 
             let piece = name | color;
-            self.set_piece_at_square(piece);
+            self.set_piece_at_square(square, piece);
             square += 1;
 
         }
 
+    }
+
+    pub fn get_board(&self) -> &[Option<Piece>; 64] {
+        &self.board
     }
 
     pub fn clear_board(&mut self) {
@@ -84,16 +88,12 @@ impl Chess {
 
         if let Some(piece) = self.get_piece_at_square(src) {
 
-            if Self::is_turn_for_piece(piece) {
-                if MoveValidator::validate_move(src, dst, &self.board) == true {
+            if self.is_turn_for_piece(piece) {
+                if MoveValidator::validate_move(src, dst, &self) == true {
                     self.move_piece(src, dst);
                 }
             }
         }
-    }
-
-    pub fn board(&self) -> &[u8] {
-        &self.board
     }
 
     pub fn get_turn(&self) -> PieceColor {
@@ -110,7 +110,7 @@ impl Chess {
     pub fn get_resulting_square_for_move(src: Square, mov: i32) -> Square {
         let dst = src as i32 + mov;
         assert!(dst >= 0 && dst <= 63);
-        return dst as u8;
+        dst as Square
     }
 
     pub fn is_square_empty(&self, square: Square) -> bool {
@@ -118,9 +118,9 @@ impl Chess {
     }
 
     pub fn get_piece_at_square(&self, square: Square) -> Option<Piece> {
-        match is_square_empty(square) {
+        match self.is_square_empty(square) {
             true  => None,
-            false => Some( self.board[square] ),
+            false => self.board[square],
         }
     }
 
@@ -142,7 +142,7 @@ impl Chess {
         PieceName::try_from(val).unwrap()
     }
 
-    fn set_piece_at_square(&mut self, piece: Piece, square: Square) {
+    fn set_piece_at_square(&mut self, square: Square, piece: Piece) {
         self.board[square] = Some(piece);
     }
 
@@ -158,7 +158,7 @@ impl Chess {
         let piece = self.get_piece_at_square(src).unwrap();
         assert!(self.get_turn() == Self::get_color_for_piece(piece));
         
-        self.set_piece_at_square(piece, dst);
+        self.set_piece_at_square(dst, piece);
         self.remove_piece_at_square(src);
 
         self.next_turn();

@@ -4,9 +4,9 @@ use speedy2d::dimen::Vector2;
 use crate::chess::Chess;
 
 pub struct UserInputHandler {
-    hovered_square:  Option<u8>,
-    src_square:      Option<u8>,
-    dst_square:      Option<u8>,
+    hovered_square:  Option<usize>,
+    src_square:      Option<usize>,
+    dst_square:      Option<usize>,
 }
 
 impl UserInputHandler {
@@ -30,7 +30,6 @@ impl UserInputHandler {
         if self.src_square.is_some() && self.src_square.unwrap() != self.hovered_square.unwrap() {
             self.dst_square = self.hovered_square;
 
-            // make move
             let src = self.src_square.unwrap();
             let dst = self.dst_square.unwrap();
             assert!(src != dst);
@@ -42,7 +41,7 @@ impl UserInputHandler {
 
         } else {
             // Need some sort of method on chess like .is_square_empty(square)
-            if chess.board()[self.hovered_square.unwrap() as usize] != 0 {
+            if !chess.is_square_empty(self.hovered_square.unwrap()) {
                 self.src_square = self.hovered_square;
             }
         }
@@ -89,12 +88,12 @@ impl UserInputHandler {
         };
 
 
-        let square = (board_pos_y * 8 + board_pos_x) as u8;
+        let square = (board_pos_y * 8 + board_pos_x) as usize;
         self.hovered_square = Some( square );
 
     }
 
-    pub fn get_hovered_square(&self) -> Option<u8> {
+    pub fn get_hovered_square(&self) -> Option<usize> {
         self.hovered_square
     }
 

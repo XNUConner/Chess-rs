@@ -46,7 +46,7 @@ impl WindowHandler for GameWindowHandler {
         graphics.clear_screen( Color::from_int_rgb(30, 16, 16) );
 
         // Render the chess board
-        self.ui.render_board(&self.chess.board(), graphics);
+        self.ui.render_board(self.chess.get_board(), graphics);
     }
 
     fn on_mouse_move(&mut self, helper: &mut WindowHelper, position: Vec2) {

@@ -97,11 +97,11 @@ impl UIBundle {
         }
     }
 
-    pub fn render_board(&self, board: &[u8], graphics: &mut Graphics2D) {
+    pub fn render_board(&self, board: &[Option<u8>; 64], graphics: &mut Graphics2D) {
         self.renderer.render_board(&self.gameview_rect, board, graphics);
     }
 
-    pub fn get_hovered_square(&self) -> Option<u8> {
+    pub fn get_hovered_square(&self) -> Option<usize> {
         self.input_handler.get_hovered_square()
     }
 

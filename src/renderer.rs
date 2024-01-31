@@ -61,7 +61,7 @@ impl Renderer {
         ]
     } 
 
-    pub fn render_board(&self, gameview_rect: &URect, board: &[u8], graphics: &mut Graphics2D) {
+    pub fn render_board(&self, gameview_rect: &URect, board: &[Option<u8>; 64], graphics: &mut Graphics2D) {
 
         // Prepare the dimensions and coordinates of the board square to be drawn
 
@@ -118,13 +118,13 @@ impl Renderer {
                 };
 
                 // Skip if no piece at that position
-                if piece == 0 { continue; }
+                if piece.is_none() { continue; }
 
                 // extract color
-                let color = Chess::get_color_for_piece(piece);
+                let color = Chess::get_color_for_piece(piece.unwrap());
 
                 // Piece contains both the piece color (MSB and 2nd-MSB) and name (1 of 6 LSB), this code extracts the name with XOR
-                let name = PieceName::try_from(piece ^ (color as u8)).unwrap();
+                let name = PieceName::try_from(piece.unwrap() ^ (color as u8)).unwrap();
 
                 let imagehandle = match color {
                     PieceColor::WHITE => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[0],

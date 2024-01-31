@@ -1,6 +1,8 @@
 use crate::chess::MoveValidator;
 use crate::chess::Chess;
 use crate::chess::{PieceName, PieceColor};
+use crate::chess::Square;
+
 // Need previous move for en-passant?
 // Chess object could store a vector of (src, dst) tuples as move_history
 // And the last entry could be passed to MoveVerifier
@@ -17,6 +19,7 @@ impl MoveValidator {
         // Self::check_pawn_direction(pawn, move) is needed
         let pawn = chess.get_piece_at_square(src).unwrap();
         let pawn_color = Chess::get_color_for_piece(pawn);
+        
         let check_direction = match pawn_color {
             // Black's attempted move must be > 0 (Heading downwards on the board).
             PieceColor::BLACK => mov > 0,
@@ -46,9 +49,9 @@ impl MoveValidator {
         let pawn_color = Chess::get_color_for_piece(pawn);
         
         // If there is a piece at destination square, and that piece must not be the same color as our pawn
-        if let dst_piece = chess.get_piece_at_square(dst) {
+        if let Some(dst_piece) = chess.get_piece_at_square(dst) {
             let dst_piece_color = Chess::get_color_for_piece(dst_piece);
-            return pawn_color != piece_at_dst_color;
+            return pawn_color != dst_piece_color;
         }
 
         // Square is empty, so pawn cannot move diagonally.
