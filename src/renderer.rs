@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use speedy2d::image::{ImageHandle, ImageSmoothingMode};
 use speedy2d::shape::{Rectangle, URect};
-use speedy2d::dimen::UVec2;
+use speedy2d::dimen::{Vec2, UVec2};
 use speedy2d::color::Color;
 use speedy2d::Graphics2D;
 
@@ -61,81 +61,72 @@ impl Renderer {
         ]
     } 
 
-    pub fn render_board(&self, gameview_rect: &URect, board: &[Option<u8>; 64], graphics: &mut Graphics2D) {
+    pub fn draw_chessboard(&self, gameview_rect: &URect, chess: &Chess, graphics: &mut Graphics2D) {
 
-        // Prepare the dimensions and coordinates of the board square to be drawn
+        for square in 0..=63 {
 
-        // Calculate both, but only using width, since for now the board is always made to true
-        // squares instead of rectangles with differing height-width ratios.
-        let square_len = {
-            let _gameview_rect_height = gameview_rect.bottom_right().y - gameview_rect.top_left().y;
-            let gameview_rect_width   = gameview_rect.bottom_right().x - gameview_rect.top_left().x;
+            Self::draw_square(gameview_rect, square, graphics);
 
-            gameview_rect_width / 8
-        };
-
-        let top_left = (gameview_rect.top_left().x, gameview_rect.top_left().y);
-
-        let bottom_right = {
-            let x = top_left.0 /* x */ + square_len;
-            let y = top_left.1 /* y */ + square_len;
-            (x, y)
-        };
-
-        // Top left square of board
-        let top_left_square = URect::from_tuples(top_left, bottom_right);
-
-        for y in 0..8 {
-
-            for x in 0..8 {
-
-                let square = {
-                    let y_offset = y * square_len;
-                    let x_offset = x * square_len;
-                    top_left_square.with_offset( UVec2::new(x_offset, y_offset) )
-                };
-
-                let square_color = match (y + x) % 2 {
-                    0 => Color::from_int_rgb(253, 245, 245), /* light */
-                    _ => Color::from_int_rgb(36, 78, 36), /* dark */
-                };
-
-                // Due to .as_ref() not being implemented for Rectangle<u32> but only for
-                // Rectangle<f32>, we must convert square from URect to Rect
-                // Which is a bit strange, since how would you draw 0.5 pixels?
-                let square_f32 = {
-                    let top_left_f32     = ( square.top_left().x as f32, square.top_left().y as f32 );
-                    let bottom_right_f32 = ( square.bottom_right().x as f32, square.bottom_right().y as f32 );
-
-                    Rectangle::from_tuples(top_left_f32, bottom_right_f32)
-                };
-
-		        graphics.draw_rectangle(&square_f32, square_color);
-
-                let piece = {
-                    let board_position = ((y * 8) + x) as usize;
-                    board[board_position]
-                };
-
-                // Skip if no piece at that position
-                if piece.is_none() { continue; }
-
-                // extract color
-                let color = Chess::get_color_for_piece(piece.unwrap());
-
-                // Piece contains both the piece color (MSB and 2nd-MSB) and name (1 of 6 LSB), this code extracts the name with XOR
-                let name = PieceName::try_from(piece.unwrap() ^ (color as u8)).unwrap();
-
-                let imagehandle = match color {
-                    PieceColor::WHITE => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[0],
-                    PieceColor::BLACK => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[1],
-                };
-
-                graphics.draw_rectangle_image(&square_f32, imagehandle);
-                
+            if let Some(piece) = chess.get_piece_at_square(square) {
+                self.draw_piece(gameview_rect, square, piece, graphics);
             }
+
         }
-        
+    }
+
+    fn draw_piece(&self, gameview_rect: &URect, square: usize, piece: u8, graphics: &mut Graphics2D) {
+        let rect = Self::make_rect_for_square(gameview_rect, square);
+        let name  = Chess::get_name_for_piece(piece);
+
+        let imagehandle = match Chess::get_color_for_piece(piece) {
+            PieceColor::WHITE => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[0],
+            PieceColor::BLACK => &self.piece_images.as_ref().unwrap().get(&name).unwrap()[1],
+        };
+
+        graphics.draw_rectangle_image(&rect, imagehandle);
+    }
+
+    fn draw_square(gameview_rect: &URect, square: usize, graphics: &mut Graphics2D) {
+        let rect = Self::make_rect_for_square(gameview_rect, square);
+
+        // Gets us a checkerboard pattern
+        let rect_color = match (square + square / 8 % 2 ) % 2 {
+            0 => Color::from_int_rgb(253, 245, 245), /* light */
+            _ => Color::from_int_rgb(36, 78, 36),    /* dark */
+        };
+
+        graphics.draw_rectangle(&rect, rect_color);
+    }
+
+    // Only used for hovered square right now
+    pub fn draw_hovered_square(gameview_rect: &URect, square: usize, graphics: &mut Graphics2D) {
+        let rect = Self::make_rect_for_square(gameview_rect, square);
+        let square_color = Color::from_int_rgba(255, 255, 0, 127);
+        graphics.draw_rectangle(&rect, square_color);
+    }
+
+    pub fn draw_selected_piece_square(gameview_rect: &URect, square: usize, graphics: &mut Graphics2D) {
+        let rect = Self::make_rect_for_square(gameview_rect, square);
+        let square_color = Color::from_int_rgba(166, 22, 43, 80);
+        graphics.draw_rectangle(&rect, square_color);
+    }
+
+    fn calc_square_length(gameview_rect: &URect) -> u32 {
+        let _gameview_rect_height = gameview_rect.bottom_right().y - gameview_rect.top_left().y;
+        let gameview_rect_width   = gameview_rect.bottom_right().x - gameview_rect.top_left().x;
+
+        gameview_rect_width / 8
+    }
+
+    fn make_rect_for_square(gameview_rect: &URect, square: usize) -> Rectangle<f32> {
+        let rect_len = Self::calc_square_length(gameview_rect);
+        let x = gameview_rect.top_left().x as f32 + (square % 8) as f32 * rect_len as f32;
+        let y = gameview_rect.top_left().y as f32 + (square / 8) as f32 * rect_len as f32;
+
+        let top_left = Vec2::new(x, y);
+        let bottom_right = Vec2::new(x + rect_len as f32, y + rect_len as f32);
+
+        Rectangle::new(top_left, bottom_right)
 
     }
 }

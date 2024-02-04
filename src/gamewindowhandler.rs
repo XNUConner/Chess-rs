@@ -10,6 +10,7 @@ use speedy2d::color::Color;
 
 use crate::uibundle::UIBundle;
 use crate::chess::Chess;
+use crate::chess::PieceColor;
 
 pub struct GameWindowHandler {
     ui:    UIBundle,
@@ -43,16 +44,29 @@ impl WindowHandler for GameWindowHandler {
         self.ui.load_images(graphics);
 
         // Sets the background color
-        graphics.clear_screen( Color::from_int_rgb(30, 16, 16) );
+        match self.chess.get_turn() {
+            PieceColor::BLACK => graphics.clear_screen( Color::from_int_rgb(30, 16, 16) ),
+            PieceColor::WHITE => graphics.clear_screen( Color::from_int_rgb(157, 157, 157) ),
+        };
 
-        // Render the chess board
-        self.ui.render_board(self.chess.get_board(), graphics);
+        // draw the chess board
+        self.ui.draw_chessboard(&self.chess, graphics);
+
+        // draw the hovered square (yellow)
+        if let Some(sq) = self.ui.get_hovered_square() {
+            self.ui.draw_hovered_square(sq, graphics);
+        }
+
+        // draw the selected piece square (red)
+        if let Some(sq) = self.ui.get_selected_piece_square() {
+            self.ui.draw_selected_piece_square(sq, graphics);
+        }
+
     }
 
     fn on_mouse_move(&mut self, helper: &mut WindowHelper, position: Vec2) {
         self.ui.set_hovered_square(&position);
-        //log::info!("{:?}", position);
-        //log::info!("{:?}", self.ui.get_hovered_square());
+
         helper.request_redraw();
     }
 

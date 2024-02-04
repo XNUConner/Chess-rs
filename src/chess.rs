@@ -9,9 +9,15 @@ pub use crate::chess::movevalidator::MoveValidator;
 type Piece  = u8;
 type Square = usize;
 
+#[derive(Clone)]
 pub struct Chess {
     board: [Option<Piece>; 64],
     turn: PieceColor,
+    white_king_square: Square,
+    black_king_square: Square,
+    white_can_castle: bool,
+    black_can_castle: bool,
+    move_history: Vec<(Square, Square)>,
 }
 
 impl Chess {
@@ -19,9 +25,17 @@ impl Chess {
         let mut chess = Chess {
             board: [None; 64],
             turn: PieceColor::WHITE,
+            white_king_square: 64,
+            black_king_square: 64,
+            white_can_castle: false,
+            black_can_castle: false,
+            move_history: Vec::new(),
         };
 
         chess.load_fen(fen);
+
+        assert!(chess.white_king_square != 64);
+        assert!(chess.black_king_square != 64);
 
         chess
     }
@@ -68,29 +82,64 @@ impl Chess {
 
             let piece = name | color;
             self.set_piece_at_square(square, piece);
+
+            if Chess::get_name_for_piece(piece) == PieceName::KING {
+                self.update_king_square(square, Chess::get_color_for_piece(piece));
+            }
+
             square += 1;
 
         }
 
     }
 
-    pub fn get_board(&self) -> &[Option<Piece>; 64] {
-        &self.board
+    pub fn update_king_square(&mut self, square: Square, color: PieceColor) {
+        assert!(square < 64);
+        match color {
+            PieceColor::BLACK => self.black_king_square = square,
+            PieceColor::WHITE => self.white_king_square = square,
+        };
     }
 
     pub fn clear_board(&mut self) {
         self.board = [None; 64];
+        self.white_king_square = 64;
+        self.black_king_square = 64;
     }
 
     pub fn attempt_move(&mut self, src: Square, dst: Square) {
-        assert!(src >= 0 && src < 64);
-        assert!(dst >= 0 && dst < 64);
+        assert!(src < 64);
+        assert!(dst < 64);
 
         if let Some(piece) = self.get_piece_at_square(src) {
 
             if self.is_turn_for_piece(piece) {
                 if MoveValidator::validate_move(src, dst, &self) == true {
+
+                    // Make move if it is validated (Does not process checks)
                     self.move_piece(src, dst);
+
+                    // Check for checks on same-color king
+                    let king_square = {
+                        let piece_color = Self::get_color_for_piece(piece);
+                        self.get_king_square(piece_color)
+                    };
+
+                    if MoveValidator::is_king_in_check(king_square, &self) {
+                        self.undo_last_move();
+                    } else {
+                        // Update position of king if it has moved.
+                        if PieceName::KING == Chess::get_name_for_piece(piece) {
+                            let king_color = Chess::get_color_for_piece(piece);
+                            self.update_king_square(dst, king_color);
+                            
+                            match king_color {
+                                PieceColor::WHITE => { self.white_can_castle = false; },
+                                PieceColor::BLACK => { self.black_can_castle = false; },
+                            };
+                        }
+                    }
+                    
                 }
             }
         }
@@ -109,7 +158,7 @@ impl Chess {
 
     pub fn get_resulting_square_for_move(src: Square, mov: i32) -> Square {
         let dst = src as i32 + mov;
-        assert!(dst >= 0 && dst <= 63);
+        assert!(dst < 64);
         dst as Square
     }
 
@@ -161,7 +210,26 @@ impl Chess {
         self.set_piece_at_square(dst, piece);
         self.remove_piece_at_square(src);
 
+        self.move_history.push( (src, dst) );
+
         self.next_turn();
+    }
+
+    // Used when a move has put a color's own king in check
+    fn undo_last_move(&mut self) {
+        assert!(!self.move_history.is_empty());
+
+        let (src, dst) = self.move_history.pop().unwrap();
+        self.next_turn();
+        self.move_piece(dst, src);
+
+    }
+
+    pub fn get_king_square(&self, color: PieceColor) -> Square {
+        match color {
+            PieceColor::WHITE => self.white_king_square,
+            PieceColor::BLACK => self.black_king_square,
+        }
     }
 
 }

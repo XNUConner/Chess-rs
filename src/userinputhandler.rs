@@ -5,16 +5,14 @@ use crate::chess::Chess;
 
 pub struct UserInputHandler {
     hovered_square:  Option<usize>,
-    src_square:      Option<usize>,
-    dst_square:      Option<usize>,
+    selected_piece_square: Option<usize>,
 }
 
 impl UserInputHandler {
     pub fn new() -> Self {
         UserInputHandler {
             hovered_square: None,
-            src_square:     None,
-            dst_square:     None,
+            selected_piece_square: None,
         }
     }
 
@@ -26,7 +24,27 @@ impl UserInputHandler {
 
     fn square_clicked(&mut self, chess: &mut Chess) {
         assert!(self.hovered_square.is_some());
+
+        if let Some(selected_square) = self.selected_piece_square {
+            let src = selected_square;
+            let dst = self.hovered_square.unwrap();
+
+            chess.attempt_move(src, dst);
+            self.selected_piece_square = None;
         
+        } else {
+            // We are clicking to select a selected_piece_square
+            // if hovered_square contains a piece, and it is the turn for that piece, set selected_piece_square to hovered_square
+            let clicked_square = self.hovered_square.unwrap();
+            if let Some(piece) = chess.get_piece_at_square(clicked_square) {
+                if chess.get_turn() == Chess::get_color_for_piece(piece) {
+                    self.selected_piece_square = Some(clicked_square);
+                }
+            }
+        }
+
+        
+        /*
         if self.src_square.is_some() && self.src_square.unwrap() != self.hovered_square.unwrap() {
             self.dst_square = self.hovered_square;
 
@@ -45,6 +63,7 @@ impl UserInputHandler {
                 self.src_square = self.hovered_square;
             }
         }
+        */
 
     }
 
@@ -95,6 +114,10 @@ impl UserInputHandler {
 
     pub fn get_hovered_square(&self) -> Option<usize> {
         self.hovered_square
+    }
+
+    pub fn get_selected_piece_square(&self) -> Option<usize> {
+        self.selected_piece_square
     }
 
 }

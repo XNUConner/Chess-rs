@@ -97,12 +97,24 @@ impl UIBundle {
         }
     }
 
-    pub fn render_board(&self, board: &[Option<u8>; 64], graphics: &mut Graphics2D) {
-        self.renderer.render_board(&self.gameview_rect, board, graphics);
+    pub fn draw_chessboard(&self, chess: &Chess, graphics: &mut Graphics2D) {
+        self.renderer.draw_chessboard(&self.gameview_rect, chess, graphics);
+    }
+
+    pub fn draw_hovered_square(&self, hovered_square: usize, graphics: &mut Graphics2D) {
+        Renderer::draw_hovered_square(&self.gameview_rect, hovered_square, graphics);
+    }
+
+    pub fn draw_selected_piece_square(&self, selected_piece_square: usize, graphics: &mut Graphics2D) {
+        Renderer::draw_selected_piece_square(&self.gameview_rect, selected_piece_square, graphics);
     }
 
     pub fn get_hovered_square(&self) -> Option<usize> {
         self.input_handler.get_hovered_square()
+    }
+
+    pub fn get_selected_piece_square(&self) -> Option<usize> {
+        self.input_handler.get_selected_piece_square()
     }
 
 }
